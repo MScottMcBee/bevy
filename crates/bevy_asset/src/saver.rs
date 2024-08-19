@@ -3,6 +3,7 @@ use crate::{io::Writer, meta::Settings, Asset, ErasedLoadedAsset};
 use crate::{AssetLoader, Handle, LabeledAsset, UntypedHandle};
 use bevy_utils::{BoxedFuture, ConditionalSendFuture, CowArc, HashMap};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::{borrow::Borrow, hash::Hash, ops::Deref};
 
 /// Saves an [`Asset`] of a given [`AssetSaver::Asset`] type. [`AssetSaver::OutputLoader`] will then be used to load the saved asset
@@ -27,6 +28,10 @@ pub trait AssetSaver: Send + Sync + 'static {
     ) -> impl ConditionalSendFuture<
         Output = Result<<Self::OutputLoader as AssetLoader>::Settings, Self::Error>,
     >;
+
+    fn get_path_transformation(path: &Path) -> Box<PathBuf> {
+        Box::new(path.to_owned())
+    }
 }
 
 /// A type-erased dynamic variant of [`AssetSaver`] that allows callers to save assets without knowing the actual type of the [`AssetSaver`].
@@ -42,6 +47,8 @@ pub trait ErasedAssetSaver: Send + Sync + 'static {
 
     /// The type name of the [`AssetSaver`].
     fn type_name(&self) -> &'static str;
+
+    fn get_path_transformation(&self, path: &Path) -> Box<PathBuf>;
 }
 
 impl<S: AssetSaver> ErasedAssetSaver for S {
@@ -64,6 +71,10 @@ impl<S: AssetSaver> ErasedAssetSaver for S {
     }
     fn type_name(&self) -> &'static str {
         std::any::type_name::<S>()
+    }
+
+    fn get_path_transformation(&self, path: &Path) -> Box<PathBuf> {
+        S::get_path_transformation(path)
     }
 }
 
