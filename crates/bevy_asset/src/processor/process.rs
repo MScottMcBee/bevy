@@ -1,4 +1,5 @@
 use crate::io::SliceReader;
+use crate::saver;
 use crate::{
     io::{
         AssetReaderError, AssetWriterError, MissingAssetWriterError,
@@ -14,6 +15,7 @@ use crate::{
 use bevy_utils::{BoxedFuture, ConditionalSendFuture};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// Asset "processor" logic that reads input asset bytes (stored on [`ProcessContext`]), processes the value in some way,
@@ -36,6 +38,10 @@ pub trait Process: Send + Sync + Sized + 'static {
     ) -> impl ConditionalSendFuture<
         Output = Result<<Self::OutputLoader as AssetLoader>::Settings, ProcessError>,
     >;
+
+    fn get_path_transformation(path: &Path) -> Box<PathBuf> {
+        Box::new(path.to_owned())
+    }
 }
 
 /// A flexible [`Process`] implementation that loads the source [`Asset`] using the `L` [`AssetLoader`], then transforms
@@ -211,6 +217,11 @@ where
             .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
         Ok(output_settings)
     }
+
+    fn get_path_transformation(path: &Path) -> Box<PathBuf> {
+        Saver::get_path_transformation(path)
+    }
+
 }
 
 impl<Loader: AssetLoader, Saver: AssetSaver<Asset = Loader::Asset>> Process
@@ -241,6 +252,10 @@ impl<Loader: AssetLoader, Saver: AssetSaver<Asset = Loader::Asset>> Process
             .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
         Ok(output_settings)
     }
+
+    fn get_path_transformation(path: &Path) -> Box<PathBuf> {
+        Saver::get_path_transformation(path)
+    }
 }
 
 /// A type-erased variant of [`Process`] that enables interacting with processor implementations without knowing
@@ -258,6 +273,7 @@ pub trait ErasedProcessor: Send + Sync {
     fn deserialize_meta(&self, meta: &[u8]) -> Result<Box<dyn AssetMetaDyn>, DeserializeMetaError>;
     /// Returns the default type-erased [`AssetMeta`] for the underlying [`Process`] impl.
     fn default_meta(&self) -> Box<dyn AssetMetaDyn>;
+    fn get_path_transformation(&self, path: &Path) -> Box<PathBuf>;
 }
 
 impl<P: Process> ErasedProcessor for P {
@@ -291,6 +307,10 @@ impl<P: Process> ErasedProcessor for P {
             processor: std::any::type_name::<P>().to_string(),
             settings: P::Settings::default(),
         }))
+    }
+
+    fn get_path_transformation(&self, path: &Path) -> Box<PathBuf> {
+        <P as Process>::get_path_transformation(path)
     }
 }
 

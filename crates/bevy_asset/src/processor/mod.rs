@@ -830,7 +830,10 @@ impl AssetProcessor {
         // TODO: this class of failure can be recovered via re-processing + smarter log validation that allows for duplicate transactions in the event of failures
         self.log_begin_processing(asset_path).await;
         if let Some(processor) = processor {
-            let mut writer = processed_writer.write(path).await.map_err(writer_err)?;
+            let mut writer = processed_writer
+                .write(processor.get_path_transformation(path).as_path())
+                .await
+                .map_err(writer_err)?;
             let mut processed_meta = {
                 let mut context =
                     ProcessContext::new(self, asset_path, &asset_bytes, &mut new_processed_info);
@@ -858,7 +861,10 @@ impl AssetProcessor {
             *processed_meta.processed_info_mut() = Some(new_processed_info.clone());
             let meta_bytes = processed_meta.serialize();
             processed_writer
-                .write_meta_bytes(path, &meta_bytes)
+                .write_meta_bytes(
+                    processor.get_path_transformation(path).as_path(),
+                    &meta_bytes,
+                )
                 .await
                 .map_err(writer_err)?;
         } else {
@@ -1102,7 +1108,6 @@ pub(crate) struct ProcessorAssetInfo {
     /// * when the processor is running in parallel with an app
     /// * when processing assets in parallel, the processor might read an asset's `process_dependencies` when processing new versions of those dependencies
     ///     * this second scenario almost certainly isn't possible with the current implementation, but its worth protecting against
-    ///
     /// This lock defends against those scenarios by ensuring readers don't read while processed files are being written. And it ensures
     /// Because this lock is shared across meta and asset bytes, readers can ensure they don't read "old" versions of metadata with "new" asset data.
     pub(crate) file_transaction_lock: Arc<async_lock::RwLock<()>>,
