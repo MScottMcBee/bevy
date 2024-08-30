@@ -1,6 +1,5 @@
 use crate::texture::{Image, ImageFormat, ImageFormatSetting, ImageLoader, ImageLoaderSettings};
-use bevy_asset::saver::{AssetSaver, SavedAsset};
-use futures_lite::AsyncWriteExt;
+use bevy_asset::saver::{AssetSaveResults, AssetSaver, SavedAsset};
 use thiserror::Error;
 
 pub struct CompressedImageSaver;
@@ -19,12 +18,11 @@ impl AssetSaver for CompressedImageSaver {
     type OutputLoader = ImageLoader;
     type Error = CompressedImageSaverError;
 
-    async fn save<'a>(
+    fn save<'a>(
         &'a self,
-        writer: &'a mut bevy_asset::io::Writer,
         image: SavedAsset<'a, Self::Asset>,
         _settings: &'a Self::Settings,
-    ) -> Result<ImageLoaderSettings, Self::Error> {
+    ) -> Result<AssetSaveResults<ImageLoaderSettings>, Self::Error> {
         let is_srgb = image.texture_descriptor.format.is_srgb();
 
         let compressed_basis_data = {
@@ -53,12 +51,14 @@ impl AssetSaver for CompressedImageSaver {
             compressor.basis_file().to_vec()
         };
 
-        writer.write_all(&compressed_basis_data).await?;
-        Ok(ImageLoaderSettings {
-            format: ImageFormatSetting::Format(ImageFormat::Basis),
-            is_srgb,
-            sampler: image.sampler.clone(),
-            asset_usage: image.asset_usage,
+        Ok(AssetSaveResults {
+            asset_bytes: compressed_basis_data.to_owned(),
+            settings: ImageLoaderSettings {
+                format: ImageFormatSetting::Format(ImageFormat::Basis),
+                is_srgb,
+                sampler: image.sampler.clone(),
+                asset_usage: image.asset_usage,
+            },
         })
     }
 }

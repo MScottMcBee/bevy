@@ -5,7 +5,7 @@ use bevy::{
         embedded_asset,
         io::{Reader, Writer},
         processor::LoadTransformAndSave,
-        saver::{AssetSaver, SavedAsset},
+        saver::{AssetSaveResults, AssetSaver, SavedAsset},
         transformer::{AssetTransformer, TransformedAsset},
         AssetLoader, AsyncWriteExt, LoadContext,
     },
@@ -211,14 +211,15 @@ impl AssetSaver for CoolTextSaver {
     type OutputLoader = TextLoader;
     type Error = std::io::Error;
 
-    async fn save<'a>(
+    fn save<'a>(
         &'a self,
-        writer: &'a mut Writer,
         asset: SavedAsset<'a, Self::Asset>,
         _settings: &'a Self::Settings,
-    ) -> Result<TextSettings, Self::Error> {
-        writer.write_all(asset.text.as_bytes()).await?;
-        Ok(TextSettings::default())
+    ) -> Result<AssetSaveResults<<Self::OutputLoader as AssetLoader>::Settings>, Self::Error> {
+        Ok(AssetSaveResults {
+            asset_bytes: asset.text.as_bytes().to_owned(),
+            settings: TextSettings::default(),
+        })
     }
 }
 

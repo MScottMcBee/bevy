@@ -1,6 +1,6 @@
 use bevy_asset::{
     io::{Reader, Writer},
-    saver::{AssetSaver, SavedAsset},
+    saver::{AssetSaveResults, AssetSaver, SavedAsset},
     Asset, AssetLoader, AsyncReadExt, AsyncWriteExt, LoadContext,
 };
 use bevy_math::Vec3;
@@ -90,12 +90,11 @@ impl AssetSaver for MeshletMeshSaverLoader {
     type OutputLoader = Self;
     type Error = MeshletMeshSaveOrLoadError;
 
-    async fn save<'a>(
+    fn save<'a>(
         &'a self,
-        writer: &'a mut Writer,
         asset: SavedAsset<'a, MeshletMesh>,
         _settings: &'a (),
-    ) -> Result<(), MeshletMeshSaveOrLoadError> {
+    ) -> Result<AssetSaveResults<()>, MeshletMeshSaveOrLoadError> {
         // Write asset magic number
         writer
             .write_all(&MESHLET_MESH_ASSET_MAGIC.to_le_bytes())
@@ -118,7 +117,10 @@ impl AssetSaver for MeshletMeshSaverLoader {
         write_slice(&asset.bounding_spheres, &mut writer)?;
         writer.finish()?;
 
-        Ok(())
+        Ok(AssetSaveResults {
+            asset_bytes: vec![],
+            settings: (),
+        })
     }
 }
 

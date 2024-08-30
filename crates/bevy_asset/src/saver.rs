@@ -1,7 +1,8 @@
 use crate::transformer::TransformedAsset;
 use crate::{io::Writer, meta::Settings, Asset, ErasedLoadedAsset};
 use crate::{AssetLoader, Handle, LabeledAsset, UntypedHandle};
-use bevy_utils::{BoxedFuture, ConditionalSendFuture, CowArc, HashMap};
+use bevy_utils::{BoxedFuture, CowArc, HashMap};
+use futures_lite::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, hash::Hash, ops::Deref};
 
@@ -21,12 +22,9 @@ pub trait AssetSaver: Send + Sync + 'static {
     /// `asset` is saved.  
     fn save<'a>(
         &'a self,
-        writer: &'a mut Writer,
         asset: SavedAsset<'a, Self::Asset>,
         settings: &'a Self::Settings,
-    ) -> impl ConditionalSendFuture<
-        Output = Result<<Self::OutputLoader as AssetLoader>::Settings, Self::Error>,
-    >;
+    ) -> Result<AssetSaveResults<<Self::OutputLoader as AssetLoader>::Settings>, Self::Error>;
 }
 
 /// A type-erased dynamic variant of [`AssetSaver`] that allows callers to save assets without knowing the actual type of the [`AssetSaver`].
@@ -56,9 +54,10 @@ impl<S: AssetSaver> ErasedAssetSaver for S {
                 .downcast_ref::<S::Settings>()
                 .expect("AssetLoader settings should match the loader type");
             let saved_asset = SavedAsset::<S::Asset>::from_loaded(asset).unwrap();
-            if let Err(err) = self.save(writer, saved_asset, settings).await {
-                return Err(err.into());
-            }
+            let save_results = self
+                .save(saved_asset, settings)
+                .map_err(std::convert::Into::into)?;
+            writer.write(&save_results.asset_bytes).await?;
             Ok(())
         })
     }
@@ -156,4 +155,10 @@ impl<'a, A: Asset> SavedAsset<'a, A> {
     pub fn iter_labels(&self) -> impl Iterator<Item = &str> {
         self.labeled_assets.keys().map(|s| &**s)
     }
+}
+
+/// The serialized byte array of saved asset along with its settings.
+pub struct AssetSaveResults<S: Settings> {
+    pub asset_bytes: Vec<u8>,
+    pub settings: S,
 }

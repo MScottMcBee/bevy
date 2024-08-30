@@ -12,6 +12,7 @@ use crate::{
     MissingAssetLoaderForExtensionError, MissingAssetLoaderForTypeNameError,
 };
 use bevy_utils::{BoxedFuture, ConditionalSendFuture};
+use futures_lite::AsyncWriteExt;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -204,12 +205,15 @@ where
         let saved_asset =
             SavedAsset::<Transformer::AssetOutput>::from_transformed(&post_transformed_asset);
 
-        let output_settings = self
+        let save_results = self
             .saver
-            .save(writer, saved_asset, &settings.saver_settings)
+            .save(saved_asset, &settings.saver_settings)
+            .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
+        writer
+            .write(&save_results.asset_bytes)
             .await
             .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
-        Ok(output_settings)
+        Ok(save_results.settings)
     }
 }
 
@@ -234,12 +238,15 @@ impl<Loader: AssetLoader, Saver: AssetSaver<Asset = Loader::Asset>> Process
         });
         let loaded_asset = context.load_source_asset(loader_meta).await?;
         let saved_asset = SavedAsset::<Loader::Asset>::from_loaded(&loaded_asset).unwrap();
-        let output_settings = self
+        let save_results = self
             .saver
-            .save(writer, saved_asset, &settings.saver_settings)
+            .save(saved_asset, &settings.saver_settings)
+            .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
+        writer
+            .write(&save_results.asset_bytes)
             .await
             .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
-        Ok(output_settings)
+        Ok(save_results.settings)
     }
 }
 
